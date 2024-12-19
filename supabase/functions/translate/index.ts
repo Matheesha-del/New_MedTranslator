@@ -4,7 +4,7 @@
 
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import OpenAI from 'npm:openai';
+import OpenAI from "openai";
 
 const openai = new OpenAI();
 
