@@ -1,159 +1,254 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { Text , View, TextInput, Button}from 'react-native';
-import {supabase} from '~/utils/supabase';
+import { Text, View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { supabase } from '~/utils/supabase';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import { useState} from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { Container } from '~/components/Container';
-import { ScreenContent } from '~/components/ScreenContent';
-
 
 export default function Details() {
+  const [conversation, setConversation] = useState([]);
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
-  const [recording, setRecording] = useState<Audio.Recording>();
+  const [doctorRecording, setDoctorRecording] = useState<Audio.Recording | null>(null);
+  const [patientRecording, setPatientRecording] = useState<Audio.Recording | null>(null);
+  const scrollViewRef = useRef(null);
 
   const [permissionResponse, requestPermission] = Audio.usePermissions();
 
-  
-  const textToSpeech = async (text: string) =>{
-    const { data,error } = await supabase.functions.invoke('text-to-speech',{
-      body: JSON.stringify({ input:text }),
+  // Load saved conversation from file on component mount
+  useEffect(() => {
+    const loadConversation = async () => {
+      try {
+        const path = FileSystem.documentDirectory + 'conversation.txt';
+        const fileExists = await FileSystem.getInfoAsync(path);
+
+        if (fileExists.exists) {
+          const content = await FileSystem.readAsStringAsync(path);
+          setConversation(JSON.parse(content));
+        }
+      } catch (err) {
+        console.error('Failed to load conversation:', err);
+      }
+    };
+
+    loadConversation();
+  }, []);
+
+  const textToSpeech = async (text) => {
+    const { data, error } = await supabase.functions.invoke('text-to-speech', {
+      body: JSON.stringify({ input: text }),
     });
-    console.log(error);
-    console.log(data);
-    if (data)
-    {
-      const {sound} = await Audio.Sound.createAsync({
+
+    if (data) {
+      const { sound } = await Audio.Sound.createAsync({
         uri: `data:audio/mp3;base64,${data.mp3Base64}`,
       });
       sound.playAsync();
     }
   };
 
-  const translate = async (text: string) => {
-    const { data,error } = await supabase.functions.invoke('trmed', {
-      body: JSON.stringify({ input, from: 'English', to: 'Spanish'}),
+  const translateET = async (text) => {
+    const { data, error } = await supabase.functions.invoke('trmed', {
+      body: JSON.stringify({ input: text, from: 'English', to: 'Tamil' }),
     });
-    console.log(error);
-    console.log(data);
 
-    return data?.content || 'Something went wrong!';
-  }
-
-  const onTranslate = async () => {
-    const translation = await translate(input);
-    setOutput(translation);
-
+    return data?.content || 'Translation failed.';
   };
 
-  async function startRecording() {
+  const onTranslateTE = async () => {
+    const translation = await translateET(input);
+    setOutput(translation);
+  };
+
+  const translateTE = async (text) => {
+    const { data, error } = await supabase.functions.invoke('trmed', {
+      body: JSON.stringify({ input: text, from: 'Tamil', to: 'English' }),
+    });
+
+    return data?.content || 'Translation failed.';
+  };
+
+  const onTranslateET = async () => {
+    const translation = await translateTE(input);
+    setOutput(translation);
+  };
+
+  // Append new messages to conversation and save to file
+  const addMessage = (speaker, text) => {
+    const newConversation = [...conversation, { speaker, text }];
+    setConversation(newConversation);
+
+    // Auto-scroll to the bottom
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+
+    // Save conversation to file
+    const path = FileSystem.documentDirectory + 'conversation.txt';
+    FileSystem.writeAsStringAsync(path, JSON.stringify(newConversation));
+  };
+
+  // Doctor recording handlers
+  async function startDoctorRecording() {
     try {
       if (permissionResponse?.status !== 'granted') {
-        console.log('Requesting permission..');
         await requestPermission();
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync( Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      console.log('Recording started');
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setDoctorRecording(recording);
     } catch (err) {
-      console.error('Failed to start recording', err);
+      console.error('Failed to start doctor recording:', err);
     }
   }
 
-  async function stopRecording() {
-    if (!recording){
-      return;
-    }
-    console.log('Stopping recording..');
-    setRecording(undefined);
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync(
-      {
-        allowsRecordingIOS: false,
-      }
-    );
-    const uri = recording.getURI();
-    console.log('Recording stopped and stored at', uri);
+  async function stopDoctorRecording() {
+    if (!doctorRecording) return;
 
-    if(uri){
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64'});
-      const { data, error } = await supabase.functions.invoke('speech-to-text',{
+    await doctorRecording.stopAndUnloadAsync();
+    const uri = doctorRecording.getURI();
+
+    if (uri) {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error } = await supabase.functions.invoke('speech-to-text', {
         body: JSON.stringify({ audioBase64 }),
       });
-      setInput(data.text);
-      const translation = await translate(data.text);
-      setOutput(translation);
-      console.log(data);
-      console.log(error);
+
+      if (data?.text) {
+        addMessage('Doctor', data.text);
+        const translation = await translateET(data.text);
+        addMessage('Doctor', translation);
+      }
+    }
+    setDoctorRecording(null);
+  }
+
+  // Patient recording handlers
+  async function startPatientRecording() {
+    try {
+      if (permissionResponse?.status !== 'granted') {
+        await requestPermission();
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setPatientRecording(recording);
+    } catch (err) {
+      console.error('Failed to start patient recording:', err);
     }
   }
 
+  async function stopPatientRecording() {
+    if (!patientRecording) return;
+
+    await patientRecording.stopAndUnloadAsync();
+    const uri = patientRecording.getURI();
+
+    if (uri) {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error } = await supabase.functions.invoke('speech-to-text', {
+        body: JSON.stringify({ audioBase64 }),
+      });
+
+      if (data?.text) {
+        addMessage('Patient', data.text);
+        const translation = await translateTE(data.text);
+        addMessage('Patient', translation);
+      }
+    }
+    setPatientRecording(null);
+  }
+
+  // Handle print summary
+  const handlePrintSummary = async () => {
+    try {
+      const path = FileSystem.documentDirectory + 'conversation.txt';
+      await FileSystem.deleteAsync(path); // Clear the conversation file
+      setConversation([]); // Clear the in-memory conversation
+      console.log('Conversation summary cleared.');
+    } catch (err) {
+      console.error('Failed to clear conversation:', err);
+    }
+  };
+
   return (
-    <>
-      <Stack.Screen options={{ title: 'Communication Box' }} />
-      {/*Language Selector row*/}
-      <View className="justify-around p-5" >
-         <Text className="font-semibold colour-blue-800">English</Text>
-         <FontAwesome5 name="arrows-alt-h" size={24} color="black" />
-         <Text className="font-semibold colour-blue-800">Tamil</Text>
+    <View style={styles.container}>
+      <Text style={styles.header}>Tamil-English Translator</Text>
+      <ScrollView style={styles.outputArea} ref={scrollViewRef}>
+        {conversation.map((line, index) => (
+          <Text key={index} style={styles.outputText}>
+            {line.speaker}: {line.text}
+          </Text>
+        ))}
+      </ScrollView>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
+        >
+          <FontAwesome5
+            name={doctorRecording ? 'stop' : 'microphone'}
+            size={24}
+            color={doctorRecording ? 'red' : 'green'}
+          />
+          <Text>Doctor</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.button}
+          onPress={patientRecording ? stopPatientRecording : startPatientRecording}
+        >
+          <FontAwesome5
+            name={patientRecording ? 'stop' : 'microphone'}
+            size={24}
+            color={patientRecording ? 'red' : 'blue'}
+          />
+          <Text>Patient</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.button} onPress={handlePrintSummary}>
+          <FontAwesome5 name="print" size={30} color="#FF9800" />
+          <Text style={styles.buttonLabel}>Print</Text>
+        </TouchableOpacity>
       </View>
-
-      {/*Input Container*/}
-      <View className="border-y border-gray-300 p-5">
-
-        <View className="flex-column gap-5">
-          {/*input*/}
-          <TextInput
-          value={input}
-          onChangeText={setInput} 
-          placeholder="Enter your text" 
-          className="min-h-32 text-lg" 
-          multiline
-          maxLength={5000}/>
-          {/*send button*/}
-          <FontAwesome6 onPress={onTranslate} name="circle-arrow-right" size={24} color="royalblue" />
-        </View>
-
-        <View className="flex-row justify-between">
-          {recording ? (
-            <FontAwesome5 onPress={stopRecording} name="stop-circle" size={24} color="royalblue" />
-          ) : (<FontAwesome6 onPress={startRecording} name="microphone" size={18} color="dimgray" />
-
-          )}
-          <Text className="color-gray-500">{input.length} / 5000</Text>
-        </View>
-      </View>
-    
-      {/*output container*/}
-      {output && (
-      <View className="gap-5 p-5 bg-gray-300">
-        <Text className="min-h-32 text-lg">{output}</Text>
-        <View className="flex-row justify-between">
-          <FontAwesome6 onPress={() => textToSpeech(output)}
-            name="volume-high" size={18} color="dimgray" />
-          <FontAwesome5 name="copy" size={18} color="dimgray" />
-        </View>
-      </View>
-      )}
-
-      <Button title="Record mic" />
-      <Button title="Record patient" />
-      <Button title="Submit the report" />
-      <Button title="Print" />
-
-
-
-
-    </>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'darkcyan',
+    padding: 20,
+  },
+  header: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#fff',
+  },
+  outputArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    marginBottom: 20,
+  },
+  outputText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  button: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonLabel: {
+    color: '#FF9800',
+    fontSize: 16,
+  },
+});
