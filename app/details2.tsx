@@ -3,18 +3,16 @@ import { Platform, Text , View, TextInput, Button, ScrollView, StyleSheet, Touch
 import {supabase} from '~/utils/supabase';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { useState, useRef, useEffect} from 'react';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { Container } from '~/components/Container';
-import { ScreenContent } from '~/components/ScreenContent';
+//import { Container } from '~/components/Container';
+//import { ScreenContent } from '~/components/ScreenContent';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
 
 
 let conversationArray: string[] = [];
-
 
 
 export default function Details() {
@@ -28,6 +26,7 @@ export default function Details() {
   const [permissionResponse, requestPermission] = Audio.usePermissions();
   const scrollViewRef = useRef(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [currentSpeaker, setCurrentSpeaker] = useState('');
   const [selectedPrinter, setSelectedPrinter] = useState(null);
 
   
@@ -47,10 +46,9 @@ export default function Details() {
   };
 
   // Append new messages to conversation and save to file
-  const addMessage = (speaker:string, text :string) => {
+  const addMessage = (speaker: 'Doctor' | 'Patient', text: string) => {
     const newConversation = [...conversation, { speaker, text }];
     setConversation(newConversation);
-
 
     // Auto-scroll to the bottom
     scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -68,12 +66,6 @@ export default function Details() {
   };
 
   const onTranslateET = async () => {
-    const translation = await translateTE(input);
-    setOutput(translation);
-  };
-
-
-  const onTranslateTE = async () => {
     const translation = await translateET(input);
     setOutput(translation);
   };
@@ -85,6 +77,14 @@ export default function Details() {
 
     return data?.content || 'Translation failed.';
   };
+
+
+  const onTranslateTE = async () => {
+    const translation = await translateTE(input);
+    setOutput(translation);
+  };
+
+ 
   
   const summarize = async (conversation: string) => { 
     const { data,error } = await supabase.functions.invoke('summarize', {
@@ -102,22 +102,11 @@ export default function Details() {
     const summary = await summarize(singleConversation);
     console.log(summary);
     setSummaryText(summary);
-      setSummaryModalVisible(true);
+    setSummaryModalVisible(true);
     } catch (err) {
       console.error('Failed to fetch summary:', err);
     }
 
-  };
-
-
-  const clearConversation = async () => {
-    try {
-      const path = FileSystem.documentDirectory + 'conversation.txt';
-      await FileSystem.deleteAsync(path);
-      setConversation([]);
-    } catch (err) {
-      console.error('Failed to clear conversation:', err);
-    }
   };
 
   const html = `
@@ -130,7 +119,7 @@ export default function Details() {
           </style>
         </head>
         <body>
-          <h1>Report</h1>
+          <h1>Summary of the Conversation</h1>
           <p>${summaryText.replace(/\n/g, '<br>')}</p>
           <br><br>
           <p>Doctor's Signature: ______________</p>
@@ -198,10 +187,6 @@ const printToFile = async () => {
       
     };
 
-
-
-
-
   async function startDoctorRecording() {
     try {
       if (permissionResponse?.status !== 'granted') {
@@ -251,14 +236,14 @@ const printToFile = async () => {
       const translation = await translateET(data.text);
       textToSpeech(translation);
 
-      //console.log('Before:', conversationArray);
+      console.log('Before:', conversationArray);
       conversationArray.push(data.text);
-      //console.log('After:', conversationArray);
+      console.log('After:', conversationArray);
 
       console.log(data);
       console.log(error);
-    }
-  }
+    }}
+
     async function startPatientRecording() {
       try {
         if (permissionResponse?.status !== 'granted') {
@@ -306,14 +291,16 @@ const printToFile = async () => {
           
           const translation = await translateTE(data.text);
           addMessage('Patient', translation);
-          //console.log('Before:', conversationArray);
+          console.log('Before:', conversationArray);
           conversationArray.push(translation);
-          //console.log('After:', conversationArray);
+          console.log('After:', conversationArray);
         }
         console.log(data);
         console.log(error);
-      }
-  }
+      }}
+
+         
+  
 
   return (
     <View style={styles.container}>
@@ -322,13 +309,18 @@ const printToFile = async () => {
         {conversation.map((line, index) => (
           <View key={index} 
           style={[styles.messageContainer,
-          line.speaker === 'Patient' && styles.patientMessage,]}>
+          line.speaker === 'Patient' && styles.patientMessage,
+          line.speaker === 'Doctor' && styles.doctorMessage,]}>
             
-          {line.speaker === 'Doctor' ? (
+            {
+          line.speaker === 'Doctor' ? (
             <FontAwesome5 name="user-md" size={20} color="green" style={styles.icon} />
-          ) : (
+            ) : (
             <FontAwesome5 name="user-alt" size={20} color="blue" style={styles.icon} />
-          )}
+            )
+          }
+
+          
           <Text style={styles.outputText}>
           <View style={styles.textContainer}>
             <Text style={styles.outputText}>{line.text}</Text>
@@ -340,8 +332,15 @@ const printToFile = async () => {
       </ScrollView>
       <View style={styles.footer}>
         <TouchableOpacity
-          style={styles.button2}
-          onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
+          style={styles.button1}
+          onPress={() => {
+            setCurrentSpeaker('Doctor');
+            if (doctorRecording) {
+              stopDoctorRecording();
+            } else {
+              startDoctorRecording();
+            }
+          }}
         >
           <FontAwesome5
             name={doctorRecording ? 'stop' : 'microphone'}
@@ -353,7 +352,14 @@ const printToFile = async () => {
 
         <TouchableOpacity
           style={styles.button2}
-          onPress={patientRecording ? stopPatientRecording : startPatientRecording}
+          onPress={() => {
+            setCurrentSpeaker('Patient');
+          if (patientRecording) {
+            stopPatientRecording();
+          } else {
+            startPatientRecording();
+          }
+        }}
         >
           <FontAwesome5
             name={patientRecording ? 'stop' : 'microphone'}
@@ -377,7 +383,6 @@ const printToFile = async () => {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
             <Text style={styles.summaryHeader}>Summary of the Conversation</Text>
             <Text style={styles.summaryText}>{summaryText}</Text>
             <View style={styles.signatureContainer}>
@@ -399,10 +404,10 @@ const printToFile = async () => {
             <TouchableOpacity style={styles.closeButton} onPress={handlePrint}>
               <Text style={styles.closeButtonText}>Close</Text>
               </TouchableOpacity>
-
-        </ScrollView>
-          </View>
-        </View>
+        </View>  
+          </View>   
+      
+       
       </Modal>
     </View>
     
@@ -422,34 +427,45 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#fff',
   },
+  
+  textContainer: {
+    backgroundColor: '#f1f1f1', // Light gray background for text
+    borderRadius: 8,  // Rounded corners for the background
+    paddingHorizontal: 10,  // Horizontal padding to create space around text
+    paddingVertical: 8,  // Vertical padding for better spacing
+    marginRight:4,
+    marginLeft:4,
+  },
+  patientMessage: {
+    flexDirection: 'row-reverse', // Align patient messages to the right
+    marginRight:2,
+    //justifyContent: 'flex-start',
+  },
+  doctorMessage: {
+    flexDirection: 'row', // Align patient messages to the right
+    marginLeft:2,
+    //justifyContent: 'flex-start',
+  },
+  icon: {
+    marginHorizontal:5,
+    
+  },
   messageContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
     marginLeft: 10, // Padding for doctor messages
-    marginRight: 10, // Padding for both messages
-  },
-  textContainer: {
-    backgroundColor: '#f1f1f1', // Light gray background for text
-    borderRadius: 8,  // Rounded corners for the background
-    paddingHorizontal: 8,  // Horizontal padding to create space around text
-    paddingVertical: 8,  // Vertical padding for better spacing
-    
-  },
-  patientMessage: {
-    flexDirection: 'row-reverse', // Align patient messages to the right
-    justifyContent: 'flex-start',
-  },
-  icon: {
-    marginRight: 10,
-    marginLeft: 5,
+    marginRight: 10, 
+    paddingHorizontal: 10,// Padding for both messages
+        
   },
   outputArea: {
-    flex: 1,
+    
     backgroundColor: '#fff',
     borderRadius: 10,
     padding: 20,
     marginBottom: 20,
+   
   },
   outputText: {
     fontSize: 16,
@@ -461,6 +477,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     backgroundColor: '#fff',
+    borderRadius: 8, 
+  },
+  button1:{
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   button2:{
     alignItems: 'center',
@@ -481,35 +502,6 @@ const styles = StyleSheet.create({
   buttonLabel4: {
     color: '#6495ed',
     fontSize: 16,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    width: '80%',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'space-between',
-  },
-  summaryHeader: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  summaryText: {
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  signatureContainer: {
-    marginBottom: 20,
   },
   spacer: {
     alignItems: 'center',
@@ -538,5 +530,30 @@ const styles = StyleSheet.create({
   printer: {
     textAlign: 'center',
   },
-
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    width: '80%',
+  },
+  summaryHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  summaryText: {
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'justify',
+  },
+  signatureContainer: {
+    marginBottom: 20,
+  },
 });
