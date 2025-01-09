@@ -1,9 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import OpenAI from "npm:openai";
+import { corsHeaders } from '../_shared/cors.ts';
 
 const openai = new OpenAI();
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
   const { input } = await req.json()
 
   const mp3 = await openai.audio.speech.create({
