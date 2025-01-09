@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Platform, Text , View, TextInput, Button, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
 import {supabase} from '~/utils/supabase';
@@ -10,42 +11,76 @@ import * as FileSystem from 'expo-file-system';
 import { Container } from '~/components/Container';
 import { ScreenContent } from '~/components/ScreenContent';
 import * as Print from 'expo-print';
+
 import { shareAsync } from 'expo-sharing';
 
 
 let conversationArray: string[] = [];
 
 
+=======
+import { Text, View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { supabase } from '~/utils/supabase';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import { useState, useRef, useEffect } from 'react';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
 
 export default function Details() {
+  const [conversation, setConversation] = useState([]);
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
+<<<<<<< HEAD
   const [conversation, setConversation] = useState([]);
   const [summaryModalVisible, setSummaryModalVisible] = useState(false);
   const [summaryText, setSummaryText]= useState('');
   const [doctorRecording, setDoctorRecording] = useState<Audio.Recording>();
   const [patientRecording, setPatientRecording] = useState<Audio.Recording>();
+=======
+  const [doctorRecording, setDoctorRecording] = useState<Audio.Recording | null>(null);
+  const [patientRecording, setPatientRecording] = useState<Audio.Recording | null>(null);
+  const scrollViewRef = useRef(null);
+
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
   const [permissionResponse, requestPermission] = Audio.usePermissions();
   const scrollViewRef = useRef(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState(null);
 
-  
-  const textToSpeech = async (text: string) =>{
-    const { data,error } = await supabase.functions.invoke('text-to-speech',{
-      body: JSON.stringify({ input:text }),
+  // Load saved conversation from file on component mount
+  useEffect(() => {
+    const loadConversation = async () => {
+      try {
+        const path = FileSystem.documentDirectory + 'conversation.txt';
+        const fileExists = await FileSystem.getInfoAsync(path);
+
+        if (fileExists.exists) {
+          const content = await FileSystem.readAsStringAsync(path);
+          setConversation(JSON.parse(content));
+        }
+      } catch (err) {
+        console.error('Failed to load conversation:', err);
+      }
+    };
+
+    loadConversation();
+  }, []);
+
+  const textToSpeech = async (text) => {
+    const { data, error } = await supabase.functions.invoke('text-to-speech', {
+      body: JSON.stringify({ input: text }),
     });
-    console.log(error);
-    console.log(data);
-    if (data)
-    {
-      const {sound} = await Audio.Sound.createAsync({
+
+    if (data) {
+      const { sound } = await Audio.Sound.createAsync({
         uri: `data:audio/mp3;base64,${data.mp3Base64}`,
       });
       sound.playAsync();
     }
   };
 
+<<<<<<< HEAD
   // Append new messages to conversation and save to file
   const addMessage = (speaker:string, text :string) => {
     const newConversation = [...conversation, { speaker, text }];
@@ -106,9 +141,17 @@ export default function Details() {
     } catch (err) {
       console.error('Failed to fetch summary:', err);
     }
+=======
+  const translateET = async (text) => {
+    const { data, error } = await supabase.functions.invoke('trmed', {
+      body: JSON.stringify({ input: text, from: 'English', to: 'Tamil' }),
+    });
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
 
+    return data?.content || 'Translation failed.';
   };
 
+<<<<<<< HEAD
 
   const clearConversation = async () => {
     try {
@@ -202,12 +245,46 @@ const printToFile = async () => {
 
 
 
+=======
+  const onTranslateTE = async () => {
+    const translation = await translateET(input);
+    setOutput(translation);
+  };
+
+  const translateTE = async (text) => {
+    const { data, error } = await supabase.functions.invoke('trmed', {
+      body: JSON.stringify({ input: text, from: 'Tamil', to: 'English' }),
+    });
+
+    return data?.content || 'Translation failed.';
+  };
+
+  const onTranslateET = async () => {
+    const translation = await translateTE(input);
+    setOutput(translation);
+  };
+
+  // Append new messages to conversation and save to file
+  const addMessage = (speaker, text) => {
+    const newConversation = [...conversation, { speaker, text }];
+    setConversation(newConversation);
+
+    // Auto-scroll to the bottom
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+
+    // Save conversation to file
+    const path = FileSystem.documentDirectory + 'conversation.txt';
+    FileSystem.writeAsStringAsync(path, JSON.stringify(newConversation));
+  };
+
+  // Doctor recording handlers
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
   async function startDoctorRecording() {
     try {
       if (permissionResponse?.status !== 'granted') {
-        console.log('Requesting permission..');
         await requestPermission();
       }
+<<<<<<< HEAD
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -218,12 +295,18 @@ const printToFile = async () => {
       );
       setDoctorRecording(recording);
       console.log('Recording started');
+=======
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setDoctorRecording(recording);
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
     } catch (err) {
-      console.error('Failed to start recording', err);
+      console.error('Failed to start doctor recording:', err);
     }
   }
 
   async function stopDoctorRecording() {
+<<<<<<< HEAD
     if (!doctorRecording){
       return;
     }
@@ -237,12 +320,19 @@ const printToFile = async () => {
     );
     const uri = doctorRecording.getURI();
     console.log('Recording stopped and stored at', uri);
+=======
+    if (!doctorRecording) return;
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
 
-    if(uri){
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64'});
-      const { data, error } = await supabase.functions.invoke('speech-to-text',{
+    await doctorRecording.stopAndUnloadAsync();
+    const uri = doctorRecording.getURI();
+
+    if (uri) {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error } = await supabase.functions.invoke('speech-to-text', {
         body: JSON.stringify({ audioBase64 }),
       });
+<<<<<<< HEAD
       //setInput(data.text);
       if (data?.text) {
         addMessage('Doctor', data.text);
@@ -257,6 +347,29 @@ const printToFile = async () => {
 
       console.log(data);
       console.log(error);
+=======
+
+      if (data?.text) {
+        addMessage('Doctor', data.text);
+        const translation = await translateET(data.text);
+        addMessage('Doctor', translation);
+      }
+    }
+    setDoctorRecording(null);
+  }
+
+  // Patient recording handlers
+  async function startPatientRecording() {
+    try {
+      if (permissionResponse?.status !== 'granted') {
+        await requestPermission();
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setPatientRecording(recording);
+    } catch (err) {
+      console.error('Failed to start patient recording:', err);
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
     }
   }
     async function startPatientRecording() {
@@ -315,11 +428,45 @@ const printToFile = async () => {
       }
   }
 
+  async function stopPatientRecording() {
+    if (!patientRecording) return;
+
+    await patientRecording.stopAndUnloadAsync();
+    const uri = patientRecording.getURI();
+
+    if (uri) {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error } = await supabase.functions.invoke('speech-to-text', {
+        body: JSON.stringify({ audioBase64 }),
+      });
+
+      if (data?.text) {
+        addMessage('Patient', data.text);
+        const translation = await translateTE(data.text);
+        addMessage('Patient', translation);
+      }
+    }
+    setPatientRecording(null);
+  }
+
+  // Handle print summary
+  const handlePrintSummary = async () => {
+    try {
+      const path = FileSystem.documentDirectory + 'conversation.txt';
+      await FileSystem.deleteAsync(path); // Clear the conversation file
+      setConversation([]); // Clear the in-memory conversation
+      console.log('Conversation summary cleared.');
+    } catch (err) {
+      console.error('Failed to clear conversation:', err);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Tamil-English Translator</Text>
       <ScrollView style={styles.outputArea} ref={scrollViewRef}>
         {conversation.map((line, index) => (
+<<<<<<< HEAD
           <View key={index} 
           style={[styles.messageContainer,
           line.speaker === 'Patient' && styles.patientMessage,]}>
@@ -336,11 +483,20 @@ const printToFile = async () => {
            
           </Text>
         </View>
+=======
+          <Text key={index} style={styles.outputText}>
+            {line.speaker}: {line.text}
+          </Text>
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
         ))}
       </ScrollView>
       <View style={styles.footer}>
         <TouchableOpacity
+<<<<<<< HEAD
           style={styles.button2}
+=======
+          style={styles.button}
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
           onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
         >
           <FontAwesome5
@@ -348,11 +504,19 @@ const printToFile = async () => {
             size={24}
             color={doctorRecording ? 'red' : 'green'}
           />
+<<<<<<< HEAD
           <Text style={styles.buttonLabel1}>Doctor</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.button2}
+=======
+          <Text>Doctor</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.button}
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
           onPress={patientRecording ? stopPatientRecording : startPatientRecording}
         >
           <FontAwesome5
@@ -360,6 +524,7 @@ const printToFile = async () => {
             size={24}
             color={patientRecording ? 'red' : 'blue'}
           />
+<<<<<<< HEAD
           <Text style={styles.buttonLabel2}>Patient</Text>
         </TouchableOpacity>
 
@@ -406,6 +571,17 @@ const printToFile = async () => {
       </Modal>
     </View>
     
+=======
+          <Text>Patient</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.button} onPress={handlePrintSummary}>
+          <FontAwesome5 name="print" size={30} color="#FF9800" />
+          <Text style={styles.buttonLabel}>Print</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
   );
 }
 
@@ -422,6 +598,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#fff',
   },
+<<<<<<< HEAD
   messageContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -444,6 +621,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
     marginLeft: 5,
   },
+=======
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
   outputArea: {
     flex: 1,
     backgroundColor: '#fff',
@@ -462,6 +641,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: '#fff',
   },
+<<<<<<< HEAD
   button2:{
     alignItems: 'center',
     justifyContent: 'center',
@@ -539,4 +719,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+=======
+  button: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonLabel: {
+    color: '#FF9800',
+    fontSize: 16,
+  },
+>>>>>>> d7834a25bba7d4c82015b15d3a747d28ef91b55a
 });
